@@ -1,0 +1,40 @@
+# Argo CD Application for authentication-v2. Apply once by hand:
+#   kubectl apply -n argocd -f argocd/application.yaml
+# After that Argo CD keeps the cluster in line with thanes-auth/kustomization.yaml.
+#
+# Secrets are not in Git and are never touched (or pruned) by Argo CD. The old version
+# (authentication / deploy.yaml) is not managed here either.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: authentication-v2
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: smtrack
+  # Removing the Application also removes what it deployed.
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/efangly/thanes-auth.git
+    targetRevision: main
+    path: thanes-auth
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: smtrack
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m
+  revisionHistoryLimit: 10

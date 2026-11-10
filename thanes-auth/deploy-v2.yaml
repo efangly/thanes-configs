@@ -1,0 +1,143 @@
+# authentication-v2: the tenant/department version of the auth service (ADR 0003/0004).
+# Runs beside the old version (deploy.yaml) until the gateway is switched; see
+# docs/ops/cutover-runbook.md in the auth repository.
+#
+# Needs, before it can start:
+#   - Secret authentication-v2-secrets   (template: secrets.example.yaml)
+#   - ConfigMap authentication-v2-config (configmap.yaml, synced with this file)
+# Migrations run at startup under an advisory lock, so several replicas starting at once is fine.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: authentication-v2
+  namespace: smtrack
+  labels:
+    app.kubernetes.io/name: authentication-v2
+    app.kubernetes.io/component: api
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: authentication-v2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: authentication-v2
+        app.kubernetes.io/component: api
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: authentication-v2
+      containers:
+        - name: authentication
+          image: siamatic/smtrack-auth-service:3.0.0
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: authentication-v2-config
+            - secretRef:
+                name: authentication-v2-secrets
+          # RabbitMQ stays unset until cutover (runbook §0 and §4.4) so no
+          # update-tenant / update-department events reach consumers that still expect
+          # the old names. At cutover, uncomment, check the key name in rabbitmq-config,
+          # and commit; Argo CD rolls the pods.
+          # env:
+          #   - name: RABBITMQ
+          #     valueFrom:
+          #       configMapKeyRef:
+          #         name: rabbitmq-config
+          #         key: RABBITMQ
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          # Startup covers migrations on a fresh or large database.
+          startupProbe:
+            httpGet:
+              path: /auth/health
+              port: http
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /auth/health
+              port: http
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /auth/health
+              port: http
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: authentication-v2
+  namespace: smtrack
+  labels:
+    app.kubernetes.io/name: authentication-v2
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: authentication-v2
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      protocol: TCP
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: authentication-v2
+  namespace: smtrack
+  labels:
+    app.kubernetes.io/name: authentication-v2
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: authentication-v2

@@ -1,0 +1,42 @@
+# ---- Secrets: never commit real values ----
+# Real Secret manifests live in a secrets/ directory next to the service's manifests
+# (e.g. thanes-auth/secrets/). Templates are named *.example.yaml and ARE committed.
+**/secrets/
+*.secret.yaml
+*.secret.yml
+*-secret.yaml
+*-secret.yml
+*-secrets.yaml
+*-secrets.yml
+secrets.yaml
+secrets.yml
+!*.example.yaml
+!*.example.yml
+
+# Env files and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+*.jks
+kubeconfig
+*.kubeconfig
+id_rsa*
+id_ed25519*
+
+# Decrypted SOPS / sealed-secrets work files
+*.dec.yaml
+*.decrypted.yaml
+*.plain.yaml
+*.unsealed.yaml
+
+# Editors and OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*~

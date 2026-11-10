@@ -1,0 +1,70 @@
+# One-off copy of the old hospital/ward database into authentication-v2's database
+# (ADR 0004, runbook §3). NOT synced by Argo CD (not in kustomization.yaml): apply it by hand.
+#
+# Needs the Secret authentication-legacy-db with key LEGACY_DATABASE_URL (preferably a
+# read-only role on the old database), plus authentication-v2-secrets for DATABASE_URL:
+#   kubectl -n smtrack create secret generic authentication-legacy-db \
+#     --from-literal=LEGACY_DATABASE_URL='postgresql://readonly:...@old-db:5432/smtrack?sslmode=require'
+#
+# Import (safe to re-run; it upserts by the old IDs):
+#   kubectl -n smtrack delete job authentication-v2-import-legacy --ignore-not-found
+#   kubectl -n smtrack apply -f import-legacy-job.yaml
+#   kubectl -n smtrack wait --for=condition=complete --timeout=30m job/authentication-v2-import-legacy
+#   kubectl -n smtrack logs job/authentication-v2-import-legacy
+#
+# Verify: change args below to ["--verify"] and run the same commands. Do not cut over
+# unless the log ends with "ok".
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: authentication-v2-import-legacy
+  namespace: smtrack
+  labels:
+    app.kubernetes.io/name: authentication-v2
+    app.kubernetes.io/component: import-legacy
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 3600
+  ttlSecondsAfterFinished: 604800
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: authentication-v2
+        app.kubernetes.io/component: import-legacy
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: import-legacy
+          image: siamatic/smtrack-auth-service:3.0.0
+          imagePullPolicy: Always
+          command: ["./import-legacy"]
+          args: []
+          env:
+            - name: LEGACY_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: authentication-legacy-db
+                  key: LEGACY_DATABASE_URL
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: authentication-v2-secrets
+                  key: DATABASE_URL
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]

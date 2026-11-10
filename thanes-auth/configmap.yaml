@@ -1,0 +1,37 @@
+# Non-secret settings of authentication-v2. Secret values (DATABASE_URL, JWT secrets,
+# Redis password, MinIO keys, image encryption key) are in the authentication-v2-secrets
+# Secret instead; see secrets.example.yaml.
+#
+# Named authentication-v2-config so it never collides with the old version's
+# authentication-config ConfigMap in the same namespace (ADR 0004: both run side by side).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: authentication-v2-config
+  namespace: smtrack
+  labels:
+    app.kubernetes.io/name: authentication-v2
+data:
+  PORT: "8080"
+  NODE_ENV: "production"
+  LOG_LEVEL: "warn"
+  EXPIRE_TIME: "15m"
+  REFRESH_EXPIRE_TIME: "7d"
+  # bcrypt work factor for new hashes; the service refuses anything below 12.
+  BCRYPT_COST: "12"
+  # How long cmd/purge keeps soft-deleted records.
+  SOFT_DELETE_RETENTION: "365d"
+  # Comma-separated CIDRs/IPs of KrakenD (or whatever proxies sit in front). Requests from
+  # these peers are rate-limited by the client found in X-Forwarded-For.
+  # TODO: set to the pod CIDR / addresses of the KrakenD pods.
+  TRUSTED_PROXIES: ""
+  # host:port of a Redis used only by v2 (the runbook recommends a separate instance).
+  # TODO: confirm the Service name.
+  REDIS_HOST: "redis-auth-v2.smtrack.svc.cluster.local:6379"
+  # MinIO (pictures are encrypted before they reach it; ADR 0005).
+  # TODO: confirm endpoint and bucket.
+  S3_ENDPOINT: "http://minio.smtrack.svc.cluster.local:9000"
+  S3_BUCKET: "smtrack-auth"
+  # Public prefix of GET /auth/image as clients see it (through KrakenD).
+  # TODO: set the public gateway URL.
+  IMAGE_BASE_URL: "https://api.example.com/auth/image"

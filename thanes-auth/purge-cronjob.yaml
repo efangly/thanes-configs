@@ -1,0 +1,95 @@
+# Weekly removal of records soft-deleted longer than SOFT_DELETE_RETENTION (default 365d),
+# with their pictures. Same image as the service.
+#
+# Starts in --dry-run (runbook §7): it only reports what it would remove. Read the job log
+#   kubectl -n smtrack logs job/<name>
+# and, once the result looks right, delete the "args" line and commit.
+#
+# Run it now instead of waiting for Sunday:
+#   kubectl -n smtrack create job --from=cronjob/authentication-v2-purge purge-manual-$(date +%s)
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: authentication-v2-purge
+  namespace: smtrack
+  labels:
+    app.kubernetes.io/name: authentication-v2
+    app.kubernetes.io/component: purge
+spec:
+  schedule: "0 3 * * 0"
+  timeZone: Asia/Bangkok
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 3600
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 3600
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: authentication-v2
+            app.kubernetes.io/component: purge
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: purge
+              image: siamatic/smtrack-auth-service:3.0.0
+              imagePullPolicy: Always
+              command: ["./purge"]
+              args: ["--dry-run"]
+              env:
+                - name: SOFT_DELETE_RETENTION
+                  valueFrom:
+                    configMapKeyRef:
+                      name: authentication-v2-config
+                      key: SOFT_DELETE_RETENTION
+                - name: S3_ENDPOINT
+                  valueFrom:
+                    configMapKeyRef:
+                      name: authentication-v2-config
+                      key: S3_ENDPOINT
+                - name: S3_BUCKET
+                  valueFrom:
+                    configMapKeyRef:
+                      name: authentication-v2-config
+                      key: S3_BUCKET
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: authentication-v2-secrets
+                      key: DATABASE_URL
+                - name: S3_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: authentication-v2-secrets
+                      key: S3_ACCESS_KEY
+                - name: S3_SECRET_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: authentication-v2-secrets
+                      key: S3_SECRET_KEY
+                - name: IMAGE_ENCRYPTION_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: authentication-v2-secrets
+                      key: IMAGE_ENCRYPTION_KEY
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 64Mi
+                limits:
+                  memory: 256Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
