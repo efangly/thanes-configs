@@ -17,7 +17,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/efangly/thanes-auth.git
+    repoURL: https://github.com/efangly/thanes-configs.git
     targetRevision: main
     path: thanes-auth
   destination:
