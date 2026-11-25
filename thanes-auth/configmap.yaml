@@ -30,8 +30,8 @@ data:
   REDIS_HOST: "redis-auth-v2.smtrack.svc.cluster.local:6379"
   # MinIO (pictures are encrypted before they reach it; ADR 0005).
   # TODO: confirm endpoint and bucket.
-  S3_ENDPOINT: "http://minio.smtrack.svc.cluster.local:9000"
-  S3_BUCKET: "smtrack-auth"
+  S3_ENDPOINT: "http://siamatic.co.th:9000"
+  S3_BUCKET: "auth-bucket"
   # Public prefix of GET /auth/image as clients see it (through KrakenD).
   # TODO: set the public gateway URL.
   IMAGE_BASE_URL: "https://api.example.com/auth/image"
