@@ -1,0 +1,88 @@
+# sync-legacy: continuous one-way sync from the old hospital/ward database into
+# authentication-v2's database until cutover (ADR 0007, runbook §3).
+#
+# NOT synced by Argo CD (not in kustomization.yaml): apply it by hand, like import-legacy-job.yaml:
+#   kubectl -n smtrack apply -f sync-legacy-deploy.yaml
+# The image tag is rewritten by the auth repository's CI (a sed on the "image:" line).
+#
+# MUST stay at exactly one replica (two would race on the watermark), hence strategy Recreate.
+# Stop it before the new version takes real writes: it overwrites edits to synced rows.
+#   kubectl -n smtrack scale deploy/authentication-v2-sync-legacy --replicas=0
+#
+# Needs: Secret authentication-legacy-db (LEGACY_DATABASE_URL, preferably a read-only role)
+# and Secret authentication-v2-secrets (DATABASE_URL, REDIS_URL).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: authentication-v2-sync-legacy
+  namespace: smtrack
+  labels:
+    app.kubernetes.io/name: authentication-v2
+    app.kubernetes.io/component: sync-legacy
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: authentication-v2
+      app.kubernetes.io/component: sync-legacy
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: authentication-v2
+        app.kubernetes.io/component: sync-legacy
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: sync-legacy
+          image: siamatic/smtrack-auth-service:3.0.2
+          imagePullPolicy: Always
+          command: ["./sync-legacy"]
+          env:
+            - name: LEGACY_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: authentication-legacy-db
+                  key: LEGACY_DATABASE_URL
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: authentication-v2-secrets
+                  key: DATABASE_URL
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: authentication-v2-secrets
+                  key: REDIS_URL
+            - name: LOG_LEVEL
+              valueFrom:
+                configMapKeyRef:
+                  name: authentication-v2-config
+                  key: LOG_LEVEL
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 32Mi

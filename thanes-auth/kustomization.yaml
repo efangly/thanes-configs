@@ -3,9 +3,10 @@
 # Deliberately left out:
 #   - secrets.example.yaml   template only; the real Secrets are created out of band
 #   - import-legacy-job.yaml one-off Job, applied by hand during cutover
+#   - sync-legacy-deploy.yaml continuous sync until cutover (ADR 0007), applied by hand
 #   - argocd/                the Application itself
 #
-# The image tag in deploy-v2.yaml, purge-cronjob.yaml and import-legacy-job.yaml is
+# The image tag in deploy-v2.yaml, purge-cronjob.yaml, import-legacy-job.yaml and sync-legacy-deploy.yaml is
 # rewritten by the auth repository's CI (.github/workflows/main.yaml, a plain sed on
 # "image:" lines), so do not move it into a kustomize "images:" block.
 apiVersion: kustomize.config.k8s.io/v1beta1
