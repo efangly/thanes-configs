@@ -42,7 +42,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: import-legacy
-          image: siamatic/smtrack-auth-service:3.0.0
+          image: siamatic/smtrack-auth-service:3.0.2
           imagePullPolicy: Always
           command: ["./import-legacy"]
           args: []

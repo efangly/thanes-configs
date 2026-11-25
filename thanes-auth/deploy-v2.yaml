@@ -51,7 +51,7 @@ spec:
                     app.kubernetes.io/name: authentication-v2
       containers:
         - name: authentication
-          image: siamatic/smtrack-auth-service:3.0.0
+          image: siamatic/smtrack-auth-service:3.0.2
           imagePullPolicy: Always
           ports:
             - name: http
