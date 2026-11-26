@@ -9,6 +9,8 @@ Manifests for the SMtrack auth service (tenant/department version), source repos
 | `configmap.yaml` | yes | `authentication-v2-config`: non-secret settings |
 | `deploy-v2.yaml` | yes | Deployment (2 replicas), Service and PodDisruptionBudget `authentication-v2` |
 | `purge-cronjob.yaml` | yes | Weekly purge of expired soft-deleted records; starts in `--dry-run` |
+| `cluster-issuer.yaml` | yes | ClusterIssuer `thanes-auth-issuer` (Let's Encrypt, HTTP-01 through nginx) |
+| `ingress.yaml` | yes | `https://api.siamatic.work/auth` to `authentication-v2`; TLS Secret `authentication-v2-tls` |
 | `import-legacy-job.yaml` | **no** | One-off import from the old database, applied by hand at cutover |
 | `secrets.example.yaml` | **no** | Template of the `authentication-v2-secrets` Secret |
 | `secrets/` | **no** | Real Secret manifests; ignored by Git (`.gitignore`), exist only on the operator's machine |
@@ -38,5 +40,8 @@ kubectl -n smtrack run auth-bootstrap --rm -it --restart=Never \
 
 Cutover, import and rollback: `docs/ops/cutover-runbook.md` in the auth repository.
 At cutover, enable RabbitMQ by uncommenting the `RABBITMQ` block in `deploy-v2.yaml`.
+
+Check the certificate: `kubectl -n smtrack get certificate authentication-v2-tls`; if it is not Ready,
+`kubectl -n smtrack describe certificate,order,challenge`.
 
 Check locally before pushing: `kubectl kustomize .`

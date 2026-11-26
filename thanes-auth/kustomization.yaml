@@ -20,3 +20,5 @@ resources:
   - configmap.yaml
   - deploy-v2.yaml
   - purge-cronjob.yaml
+  - cluster-issuer.yaml
+  - ingress.yaml

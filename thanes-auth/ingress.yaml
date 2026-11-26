@@ -1,0 +1,30 @@
+# Public HTTPS entry to authentication-v2: https://api.siamatic.work/auth
+# Only /auth is routed here; the rest of the host is left free for other services.
+# cert-manager creates the Certificate and the authentication-v2-tls Secret from the
+# annotation and the tls block, and renews them.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: authentication-v2
+  namespace: smtrack
+  labels:
+    app.kubernetes.io/name: authentication-v2
+  annotations:
+    cert-manager.io/cluster-issuer: thanes-auth-issuer
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - api.siamatic.work
+      secretName: authentication-v2-tls
+  rules:
+    - host: api.siamatic.work
+      http:
+        paths:
+          - path: /auth
+            pathType: Prefix
+            backend:
+              service:
+                name: authentication-v2
+                port:
+                  name: http
