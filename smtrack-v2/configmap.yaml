@@ -38,7 +38,7 @@ data:
   RABBITMQ_FCM_QUEUE: "fcm_notification_queue"
 
   # Legacy sync (ADR-0007). Enable only after the queue is set up and the backfill ran.
-  LEGACY_SYNC_ENABLED: "false"
+  LEGACY_SYNC_ENABLED: "true"
   RABBITMQ_LEGACY_EXCHANGE: "legacy.sync"
   RABBITMQ_LEGACY_SYNC_QUEUE: "legacy_sync_queue"
   RABBITMQ_LEGACY_SYNC_DLQ: "legacy_sync_dlq"
@@ -49,7 +49,7 @@ data:
   ARCHIVE_S3_ENDPOINT: "http://siamatic.thddns.net:9000"
   ARCHIVE_S3_FORCE_PATH_STYLE: "true"
   ARCHIVE_S3_REGION: "us-east-1"
-  ARCHIVE_S3_BUCKET: "smtrack-log-archive"
+  ARCHIVE_S3_BUCKET: "archive-backend"
   DEVICE_S3_BUCKET: "media"
   FIRMWARE_S3_BUCKET: "media"
   FIRMWARE_MAX_FILE_SIZE: "104857600"
@@ -58,3 +58,4 @@ data:
   # Empty disables the OpenTelemetry SDK. TODO: set once a collector is reachable.
   # The archive gauges and their alerts need it.
   OTEL_EXPORTER_OTLP_ENDPOINT: ""
+  NOTIFICATION_PUSH_ENABLED: "false"
