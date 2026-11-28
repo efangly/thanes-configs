@@ -1,0 +1,33 @@
+# What Argo CD syncs (argocd/application.yaml points here).
+#
+# Deliberately left out:
+#   - secrets.example.yaml      template only; the real Secrets are created out of band
+#   - archive-backfill-job.yaml one-off Job, applied by hand during the retention cut-over
+#   - legacy-backfill-job.yaml  one-off Job, applied by hand before enabling legacy sync
+#   - argocd/                   the Application itself
+#
+# The backend repository's CI (.github/workflows/ci-cd.yml) runs `kustomize edit set image`
+# in this directory after each push to its main, rewriting the images: block below.
+# The two Jobs applied by hand are not covered by it: set their tag before applying.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: smtrack
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: smtrack
+    includeSelectors: false
+resources:
+  - configmap.yaml
+  - migrate-job.yaml
+  - deploy.yaml
+  - archive-export-cronjob.yaml
+  - archive-cleanup-cronjob.yaml
+  - legacy-reconcile-cronjob.yaml
+  - ingress.yaml
+images:
+  - name: smtrack-backend
+    newName: docker.io/siamatic/smtrack-backend
+    newTag: test
+  - name: smtrack-backend-migrate
+    newName: docker.io/siamatic/smtrack-backend-migrate
+    newTag: test

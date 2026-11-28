@@ -1,0 +1,86 @@
+# Daily check that legacy sync lost nothing (ADR-0007, docs/legacy-sync-contract.md §6).
+# Reads the old databases only; exit 1 (Job Failed) means a mismatch.
+#
+# Suspended until legacy sync runs. It needs the Secret smtrack-v2-backend-legacy-db,
+# without which every run exits 2. Enable with
+#   kubectl -n smtrack patch cronjob smtrack-v2-backend-legacy-reconcile -p '{"spec":{"suspend":false}}'
+# (argocd/application.yaml ignores differences in spec.suspend, so it stays enabled.)
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: smtrack-v2-backend-legacy-reconcile
+  namespace: smtrack
+  labels:
+    app.kubernetes.io/name: smtrack-v2-backend
+    app.kubernetes.io/component: legacy-reconcile
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  # After midnight UTC, so the previous day is complete.
+  schedule: "30 1 * * *"
+  timeZone: Etc/UTC
+  suspend: true
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 3600
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 3600
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: smtrack-v2-backend
+            app.kubernetes.io/component: legacy-reconcile
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 100
+            runAsGroup: 101
+            fsGroup: 101
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: reconcile
+              image: smtrack-backend
+              imagePullPolicy: Always
+              command: ["node", "dist/cli/legacy-reconcile"]
+              args: ["--days=1"]
+              env:
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: smtrack-v2-backend-secrets
+                      key: DATABASE_URL
+                - name: SOURCE_DATABASE_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: smtrack-v2-backend-legacy-db
+                      key: SOURCE_DATABASE_URL
+                # Only when the old logs live in a separate database.
+                - name: SOURCE_LOG_DATABASE_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: smtrack-v2-backend-legacy-db
+                      key: SOURCE_LOG_DATABASE_URL
+                      optional: true
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 128Mi
+                limits:
+                  memory: 512Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: tmp
+              emptyDir: {}

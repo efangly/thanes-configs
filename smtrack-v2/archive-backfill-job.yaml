@@ -1,0 +1,71 @@
+# One-off, for the cut-over away from the 6-month retention policy (ADR-0005): archive
+# what is still in the database without dropping anything, then verify.
+# NOT synced by Argo CD (not in kustomization.yaml): apply it by hand.
+#
+# Set the image tag below to the one in kustomization.yaml (CI does not rewrite it).
+# Run once per step, editing args each time:
+#   1. ["backfill", "--dry-run"]  which months, how many rows
+#   2. ["backfill"]               archive for real; safe to re-run
+#   3. ["verify"]                 ready only if the log says CUT-OVER READY
+# A range can be given: ["backfill", "--from=2026-01", "--to=2026-03", "--table=log_days"]
+#
+#   kubectl -n smtrack delete job smtrack-v2-backend-archive-backfill --ignore-not-found
+#   kubectl -n smtrack apply -f archive-backfill-job.yaml
+#   kubectl -n smtrack logs -f job/smtrack-v2-backend-archive-backfill
+#
+# It shares a lock with the export CronJob: if they collide, one logs "skipped" and exits 0.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: smtrack-v2-backend-archive-backfill
+  namespace: smtrack
+  labels:
+    app.kubernetes.io/name: smtrack-v2-backend
+    app.kubernetes.io/component: archive-backfill
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 21600
+  ttlSecondsAfterFinished: 604800
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: smtrack-v2-backend
+        app.kubernetes.io/component: archive-backfill
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 100
+        runAsGroup: 101
+        fsGroup: 101
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: archive
+          image: docker.io/siamatic/smtrack-backend:test
+          imagePullPolicy: Always
+          command: ["node", "dist/cli/archive-job"]
+          args: ["backfill", "--dry-run"]
+          envFrom:
+            - configMapRef:
+                name: smtrack-v2-backend-config
+            - secretRef:
+                name: smtrack-v2-backend-secrets
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 1Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}

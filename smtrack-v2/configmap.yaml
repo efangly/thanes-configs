@@ -1,0 +1,60 @@
+# Non-secret settings of the SMtrack v2 backend. Secret values (database, Redis and
+# RabbitMQ URLs, MQTT login, JWT/device secrets, S3 keys) are in the
+# smtrack-v2-backend-secrets Secret instead; see secrets.example.yaml.
+#
+# Pods read this with envFrom, which does not reload. After changing a value:
+#   kubectl -n smtrack rollout restart deploy/smtrack-v2-backend
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: smtrack-v2-backend-config
+  namespace: smtrack
+  labels:
+    app.kubernetes.io/name: smtrack-v2-backend
+data:
+  NODE_ENV: "production"
+  LOG_LEVEL: "info"
+  PORT: "3000"
+  # Partner API (third-party). Plaintext, so it stays inside the cluster.
+  GRPC_URL: "0.0.0.0:50051"
+  # Comma-separated origins. TODO: set to the frontend origin; empty allows every origin.
+  # (src/main.ts currently allows "*" regardless of this value.)
+  CORS_ORIGIN: "*"
+
+  # TODO: confirm the broker the v2 devices publish to.
+  MQTT_BROKER_URL: "mqtt://siamatic.thddns.net:1883"
+  # The pod name is appended, so client IDs never collide.
+  MQTT_CLIENT_ID: "smtrack-v2-backend"
+  MQTT_LOG_TOPIC: "devices/+/log"
+  # TODO: the realtime topic is not agreed with firmware yet.
+  MQTT_REALTIME_TOPIC: "devices/+/telemetry"
+  MQTT_NOTIFICATION_TOPIC_PREFIX: "notification"
+  MQTT_SHARED_GROUP: "smtrack-ingest"
+
+  # Queue names. If RABBITMQ_URL points at a broker the old services also use, make sure
+  # none of them consumes these names: two consumers on one queue split its messages.
+  RABBITMQ_DEVICE_ONLINE_QUEUE: "device_online_queue"
+  RABBITMQ_LOG_QUEUE: "log_queue"
+  RABBITMQ_FCM_QUEUE: "fcm_notification_queue"
+
+  # Legacy sync (ADR-0007). Enable only after the queue is set up and the backfill ran.
+  LEGACY_SYNC_ENABLED: "false"
+  RABBITMQ_LEGACY_EXCHANGE: "legacy.sync"
+  RABBITMQ_LEGACY_SYNC_QUEUE: "legacy_sync_queue"
+  RABBITMQ_LEGACY_SYNC_DLQ: "legacy_sync_dlq"
+
+  # S3-compatible storage (MinIO). Device pictures and firmware reuse this endpoint,
+  # region and path style; their keys are in the Secret. Buckets must already exist.
+  # TODO: confirm endpoint and bucket names.
+  ARCHIVE_S3_ENDPOINT: "http://siamatic.thddns.net:9000"
+  ARCHIVE_S3_FORCE_PATH_STYLE: "true"
+  ARCHIVE_S3_REGION: "us-east-1"
+  ARCHIVE_S3_BUCKET: "smtrack-log-archive"
+  DEVICE_S3_BUCKET: "media"
+  FIRMWARE_S3_BUCKET: "media"
+  FIRMWARE_MAX_FILE_SIZE: "104857600"
+
+  OTEL_SERVICE_NAME: "smtrack-backend"
+  # Empty disables the OpenTelemetry SDK. TODO: set once a collector is reachable.
+  # The archive gauges and their alerts need it.
+  OTEL_EXPORTER_OTLP_ENDPOINT: ""

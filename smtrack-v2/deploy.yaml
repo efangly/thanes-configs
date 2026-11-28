@@ -1,0 +1,138 @@
+# SMtrack v2 backend: REST + SSE on :3000 (global prefix /log), MQTT and RabbitMQ
+# consumers, and the Partner API (gRPC) on :50051.
+#
+# Needs, before it can start:
+#   - Secret smtrack-v2-backend-secrets   (template: secrets.example.yaml)
+#   - ConfigMap smtrack-v2-backend-config (configmap.yaml, synced with this file)
+#   - the migrate Job to have finished (migrate-job.yaml, earlier sync wave)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: smtrack-v2-backend
+  namespace: smtrack
+  labels:
+    app.kubernetes.io/name: smtrack-v2-backend
+    app.kubernetes.io/component: api
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  # Keep at 1: SSE fan-out is in-process (RxJS Subject in sse.service.ts), so with more
+  # replicas a client would miss events ingested by another pod. For the same reason there
+  # is no PodDisruptionBudget (it would block node drains).
+  replicas: 1
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: smtrack-v2-backend
+      app.kubernetes.io/component: api
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: smtrack-v2-backend
+        app.kubernetes.io/component: api
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      # 100:101 = user nestjs / group nodejs created in the Dockerfile. The image names the
+      # user, so runAsNonRoot needs the numeric IDs here.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 100
+        runAsGroup: 101
+        fsGroup: 101
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: backend
+          image: smtrack-backend
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 3000
+              protocol: TCP
+            - name: grpc
+              containerPort: 50051
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: smtrack-v2-backend-config
+            - secretRef:
+                name: smtrack-v2-backend-secrets
+          env:
+            - name: MQTT_INSTANCE_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          lifecycle:
+            # Let the endpoint be removed before the process gets SIGTERM.
+            preStop:
+              exec:
+                command: ["sleep", "5"]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 768Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          # main.ts allows 30s for each startup step.
+          startupProbe:
+            httpGet:
+              path: /log/health
+              port: http
+            periodSeconds: 5
+            failureThreshold: 30
+          # /log/health pings the database: it takes the pod out of the Service when the
+          # database is gone, but must not restart it.
+          readinessProbe:
+            httpGet:
+              path: /log/health
+              port: http
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: smtrack-v2-backend
+  namespace: smtrack
+  labels:
+    app.kubernetes.io/name: smtrack-v2-backend
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: smtrack-v2-backend
+    app.kubernetes.io/component: api
+  ports:
+    - name: http
+      port: 3000
+      targetPort: http
+      protocol: TCP
+    - name: grpc
+      port: 50051
+      targetPort: grpc
+      protocol: TCP
+      appProtocol: grpc

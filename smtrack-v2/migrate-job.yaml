@@ -1,0 +1,54 @@
+# prisma migrate deploy, run as an Argo CD Sync hook: after the ConfigMap, before the
+# Deployment (sync waves), and again on every sync (it is a no-op when up to date).
+# `prisma` is a devDependency, so this uses the image built from the Dockerfile's
+# `migrate` target, not the API image.
+#
+# The database must offer the TimescaleDB extension, and the role in DATABASE_URL must be
+# allowed to create it (or it must exist already).
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: smtrack-v2-backend-migrate
+  namespace: smtrack
+  labels:
+    app.kubernetes.io/name: smtrack-v2-backend
+    app.kubernetes.io/component: migrate
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  backoffLimit: 3
+  activeDeadlineSeconds: 900
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: smtrack-v2-backend
+        app.kubernetes.io/component: migrate
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: migrate
+          image: smtrack-backend-migrate
+          imagePullPolicy: Always
+          command: ["npx", "prisma", "migrate", "deploy"]
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: smtrack-v2-backend-secrets
+                  key: DATABASE_URL
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 768Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]

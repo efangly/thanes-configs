@@ -1,0 +1,66 @@
+# Hourly removal of on-demand restored data (Restored window) nobody has read for 24h.
+# Safe next to live reads. Uses only the database.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: smtrack-v2-backend-archive-cleanup
+  namespace: smtrack
+  labels:
+    app.kubernetes.io/name: smtrack-v2-backend
+    app.kubernetes.io/component: archive-cleanup
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  schedule: "15 * * * *"
+  timeZone: Etc/UTC
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 600
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 600
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: smtrack-v2-backend
+            app.kubernetes.io/component: archive-cleanup
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 100
+            runAsGroup: 101
+            fsGroup: 101
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: archive
+              image: smtrack-backend
+              imagePullPolicy: Always
+              command: ["node", "dist/cli/archive-job"]
+              args: ["cleanup-restored"]
+              envFrom:
+                - configMapRef:
+                    name: smtrack-v2-backend-config
+                - secretRef:
+                    name: smtrack-v2-backend-secrets
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 128Mi
+                limits:
+                  memory: 512Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: tmp
+              emptyDir: {}

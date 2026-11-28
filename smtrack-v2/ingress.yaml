@@ -1,0 +1,38 @@
+# Public HTTPS entry to the SMtrack v2 backend: https://api.siamatic.work/log
+# The host is shared with authentication-v2 (/auth, thanes-auth/ingress.yaml).
+# The ClusterIssuer thanes-auth-issuer is cluster-wide and owned by that Application
+# (thanes-auth/cluster-issuer.yaml); do not declare it again here.
+# cert-manager creates the Certificate and the smtrack-v2-backend-tls Secret.
+# Swagger (/docs) is off in production and gRPC is not exposed.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: smtrack-v2-backend
+  namespace: smtrack
+  labels:
+    app.kubernetes.io/name: smtrack-v2-backend
+  annotations:
+    cert-manager.io/cluster-issuer: thanes-auth-issuer
+    # SSE: no buffering, and let idle streams stay open.
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    # Firmware upload, up to FIRMWARE_MAX_FILE_SIZE (100MB) plus multipart overhead.
+    nginx.ingress.kubernetes.io/proxy-body-size: "110m"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - api.siamatic.work
+      secretName: smtrack-v2-backend-tls
+  rules:
+    - host: api.siamatic.work
+      http:
+        paths:
+          - path: /log
+            pathType: Prefix
+            backend:
+              service:
+                name: smtrack-v2-backend
+                port:
+                  name: http

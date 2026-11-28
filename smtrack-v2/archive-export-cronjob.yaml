@@ -1,0 +1,76 @@
+# Monthly archive of log_days / notifications / device_audit / user_audit to object
+# storage, then removal of chunks that left the hot window and have a verified archive
+# (ADR-0005/0006, docs/archive-operations.md in the backend repository).
+# Day 1 does the work; days 2-3 retry a failed day 1.
+#
+# Starts in --dry-run: it only reports what it would do. Read the job log
+#   kubectl -n smtrack logs job/<name>
+# and finish the cut-over (README) before deleting "--dry-run" and committing.
+#
+# Run it now instead of waiting:
+#   kubectl -n smtrack create job --from=cronjob/smtrack-v2-backend-archive-export archive-manual-$(date +%s)
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: smtrack-v2-backend-archive-export
+  namespace: smtrack
+  labels:
+    app.kubernetes.io/name: smtrack-v2-backend
+    app.kubernetes.io/component: archive-export
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  schedule: "0 3 1-3 * *"
+  timeZone: Etc/UTC
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 3600
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      # A non-zero exit fails the Job at once so it can be alerted on; the next run heals.
+      backoffLimit: 0
+      activeDeadlineSeconds: 3600
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: smtrack-v2-backend
+            app.kubernetes.io/component: archive-export
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 100
+            runAsGroup: 101
+            fsGroup: 101
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: archive
+              image: smtrack-backend
+              imagePullPolicy: Always
+              command: ["node", "dist/cli/archive-job"]
+              args: ["export-and-drop", "--dry-run"]
+              envFrom:
+                - configMapRef:
+                    name: smtrack-v2-backend-config
+                - secretRef:
+                    name: smtrack-v2-backend-secrets
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 256Mi
+                limits:
+                  memory: 1Gi
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: tmp
+              emptyDir: {}
